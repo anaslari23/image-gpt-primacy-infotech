@@ -22,13 +22,13 @@ def init_db():
     conn.commit()
     conn.close()
 
-def add_post(platform: str, caption: str, image_path: str, schedule_time: str, credentials: dict) -> int:
+def add_post(platform: str, caption: str, image_path: str, schedule_time: str, credentials: dict, status: str = "Approved") -> int:
     init_db()
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     c.execute(
         "INSERT INTO posts (platform, caption, image_path, schedule_time, status, credentials) VALUES (?, ?, ?, ?, ?, ?)",
-        (platform, caption, image_path, schedule_time, "Approved", json.dumps(credentials))
+        (platform, caption, image_path, schedule_time, status, json.dumps(credentials))
     )
     post_id = c.lastrowid
     conn.commit()

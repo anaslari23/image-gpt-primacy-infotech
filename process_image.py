@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Literal, Optional, Tuple
 
 import numpy as np
-from PIL import Image, ImageFilter, ImageChops
+from PIL import Image, ImageFilter, ImageChops, ImageDraw, ImageFont
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
@@ -305,6 +305,139 @@ def save_image(
         img.save(output_path, format="PNG", optimize=True)
 
 
+# ── Footer overlay ────────────────────────────────────────────────────────────
+
+def _create_rounded_card(w: int, h: int, radius: int, color: tuple) -> Image.Image:
+    scale = 2
+    img = Image.new("RGBA", (w * scale, h * scale), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    try:
+        draw.rounded_rectangle((0, 0, w * scale - 1, h * scale - 1), radius * scale, fill=color)
+    except AttributeError:
+        draw.rectangle((0, 0, w * scale, h * scale), fill=color)
+    return img.resize((w, h), Image.LANCZOS)
+
+def overlay_footer(canvas: Image.Image, margin: int) -> Image.Image:
+    cw, ch = canvas.size
+    result = canvas.copy()
+    
+    card_bg_color = (0, 0, 0, 190)
+    card_radius = 16
+    
+    # ── Flags Floating Card ──
+    flags_dir = Path("/Volumes/Crucial X9/image-gpt copy/assets/countries")
+    flag_names = ["india.png", "dubai.png", "uk.png", "bangladesh.png"]
+    flags = []
+    for fn in flag_names:
+        p = flags_dir / fn
+        if p.exists():
+            try:
+                flags.append(Image.open(p).convert("RGBA"))
+            except Exception:
+                pass
+                
+    flags_card = None
+    fc_w = fc_h = 0
+    if flags:
+        flag_h = max(28, int(ch * 0.04))
+        padding = 18
+        
+        resized_flags = []
+        total_flags_w = 0
+        for fi in flags:
+            fw = int(flag_h * (fi.width / fi.height))
+            total_flags_w += fw
+            resized_flags.append(fi.resize((fw, flag_h), Image.LANCZOS))
+        
+        spacing = 14
+        fc_w = total_flags_w + spacing * (len(resized_flags) - 1) + padding * 2
+        fc_h = flag_h + padding * 2
+        
+        flags_card = _create_rounded_card(fc_w, fc_h, card_radius, card_bg_color)
+        fx_p, fy_p = padding, padding
+        for r_fi in resized_flags:
+            flags_card.paste(r_fi, (fx_p, fy_p), r_fi)
+            fx_p += r_fi.width + spacing
+
+    # ── Info Floating Card ──
+    info_path = Path("/Volumes/Crucial X9/image-gpt copy/assets/data/info.txt")
+    text = info_path.read_text().strip() if info_path.exists() else ""
+    lines = [line.strip() for line in text.split("\n") if line.strip()]
+    
+    info_card = None
+    ic_w = ic_h = 0
+    if lines:
+        font_size = max(18, int(ch * 0.026))
+        try:
+            font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", font_size)
+        except Exception:
+            font = ImageFont.load_default()
+            
+        dummy_draw = ImageDraw.Draw(Image.new("RGBA", (1,1)))
+        max_lw = 0
+        lh = font_size
+        line_spacing = int(font_size * 0.5)
+        
+        for line in lines:
+            try:
+                bbox = dummy_draw.textbbox((0, 0), line, font=font)
+                lw = bbox[2] - bbox[0]
+            except AttributeError:
+                lw = dummy_draw.textsize(line, font=font)[0]
+            if lw > max_lw: max_lw = lw
+            
+        total_th = (lh * len(lines)) + (line_spacing * (len(lines) - 1))
+        
+        padding_x = 28
+        padding_y = 20
+        ic_w = max_lw + padding_x * 2
+        ic_h = total_th + padding_y * 2
+        
+        info_card = _create_rounded_card(ic_w, ic_h, card_radius, card_bg_color)
+        draw_card = ImageDraw.Draw(info_card)
+        
+        current_y = padding_y
+        for line in lines:
+            try:
+                bbox = draw_card.textbbox((0, 0), line, font=font)
+                lw = bbox[2] - bbox[0]
+            except AttributeError:
+                lw = draw_card.textsize(line, font=font)[0]
+                
+            lx = padding_x
+            draw_card.text((lx, current_y), line, font=font, fill=(250, 250, 250, 255))
+            current_y += lh + line_spacing
+
+    # ── Dynamic Placement Logic ──
+    thumb = result.resize((256, 256), Image.BILINEAR).convert("L")
+    gray = np.array(thumb, dtype=np.float32)
+    gx = (gray[1:-1, 2:].astype(np.float32) - gray[1:-1, :-2].astype(np.float32))
+    gy = (gray[2:, 1:-1].astype(np.float32) - gray[:-2, 1:-1].astype(np.float32))
+    edges = np.sqrt(gx ** 2 + gy ** 2)
+    
+    tw, th = 256, 256
+    bottom_left_edges = float(edges[th//2:, :tw//2].mean())
+    bottom_right_edges = float(edges[th//2:, tw//2:].mean())
+    
+    # Place the heavier info_card in the calmer corner
+    if bottom_left_edges < bottom_right_edges:
+        info_corner, flags_corner = "bottom-left", "bottom-right"
+    else:
+        info_corner, flags_corner = "bottom-right", "bottom-left"
+        
+    if info_card:
+        ix = margin if info_corner == "bottom-left" else cw - margin - ic_w
+        iy = ch - margin - ic_h
+        result.paste(info_card, (ix, iy), info_card)
+        
+    if flags_card:
+        fx_c = margin if flags_corner == "bottom-left" else cw - margin - fc_w
+        fy_c = ch - margin - fc_h
+        result.paste(flags_card, (fx_c, fy_c), flags_card)
+
+    return result
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 
 def process_image(
@@ -350,6 +483,9 @@ def process_image(
     img = Image.open(input_path)
     original_size = img.size
     resized = resize_image(img, width, height, resize_mode, bg)
+
+    # ── New: Footer Overlay ──────────────────────────────────────────────────
+    resized = overlay_footer(resized, logo_margin)
 
     # ── Resolve "auto" position / variant ────────────────────────────────────
     auto_used = logo_position == "auto" or logo_variant == "auto"
