@@ -93,6 +93,7 @@ async def index():
     return (BASE_DIR / "static" / "index.html").read_text()
 
 from pipeline import run_pipeline, PipelineError
+from competitor_pipeline import run_rival_pipeline
 
 class CampaignRequest(BaseModel):
     topic: str
@@ -115,6 +116,35 @@ async def generate_campaign(req: CampaignRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error. See console.")
+
+class RivalRequest(BaseModel):
+    brand_name: str
+    topic: str
+    platform: str
+    post_type: str
+    tone: str
+    target_audience: str
+    cta: str
+    competitor_names: list[str]
+    publish: bool = False
+    schedule_time: str = "now"
+    token: str = ""
+    actor_id: str = ""
+
+@app.post("/rival")
+async def rival_campaign(req: RivalRequest):
+    """
+    Monitor competitor posts, analyse gaps, generate a superior creative,
+    brand it, and optionally publish/schedule it to social media.
+    """
+    try:
+        result = run_rival_pipeline(req.dict())
+        return result
+    except PipelineError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error. See console.")
+
 
 class PublishRequest(BaseModel):
     platform: str
@@ -146,6 +176,127 @@ async def publish_post(req: PublishRequest):
     else:
         post_id = add_post(req.platform, req.caption, req.image_path, req.schedule_time, creds)
         return {"status": "success", "message": f"Post scheduled with ID {post_id}"}
+
+class ApprovalRequest(BaseModel):
+    platform: str
+    caption: str
+    image_path: str
+    schedule_time: str
+    ceo_email: str
+    token: str
+    actor_id: str
+
+@app.post("/request_approval")
+async def request_approval(req: ApprovalRequest):
+    import datetime
+    db_schedule = req.schedule_time
+    if req.schedule_time == "now":
+        db_schedule = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        
+    creds = {"token": req.token, "actor_id": req.actor_id}
+    post_id = add_post(req.platform, req.caption, req.image_path, db_schedule, creds, status="Pending Approval")
+    
+    approval_link = f"http://127.0.0.1:8000/approve/{post_id}"
+    
+    import smtplib
+    from email.message import EmailMessage
+    from email.utils import make_msgid
+    import os
+    
+    # Configure your Real Email Credentials Here!
+    sender_email = os.environ.get("SMTP_EMAIL", "anaslari4work@gmail.com") 
+    sender_pass = os.environ.get("SMTP_PASSWORD", "qfbe uikz xhjc pshj")
+    
+    msg = EmailMessage()
+    msg["Subject"] = "Urgent: CEO Approval Required for Marketing Post"
+    msg["From"] = sender_email
+    msg["To"] = req.ceo_email
+    
+    approval_link = f"http://127.0.0.1:8000/approve/{post_id}"
+    rejection_link = f"http://127.0.0.1:8000/reject/{post_id}"
+    
+    image_cid = make_msgid()
+    
+    html_content = f"""
+    <html>
+      <body style="font-family: Arial, sans-serif; background-color: #f9fafb; padding: 20px;">
+        <div style="max-width: 600px; margin: auto; background-color: white; border-radius: 12px; padding: 30px; border: 1px solid #e5e7eb;">
+          <h2 style="color: #111827; border-bottom: 2px solid #e5e7eb; padding-bottom: 15px; margin-top:0;">Approval Required: {req.platform} Post</h2>
+          
+          <h3 style="color: #4b5563; margin-bottom: 5px;">Generated Caption:</h3>
+          <p style="white-space: pre-wrap; color: #1f2937; background: #f3f4f6; padding: 15px; border-radius: 8px;">{req.caption}</p>
+          
+          <h3 style="color: #4b5563; margin-bottom: 5px;">Media Preview:</h3>
+          <div style="text-align: center; margin: 20px 0;">
+            <img src="cid:{image_cid[1:-1]}" style="max-width: 100%; border-radius: 8px; border: 1px solid #e5e7eb;" alt="Post Media (Download pending...)" />
+          </div>
+          
+          <div style="margin-top: 30px; text-align: center;">
+            <a href="{approval_link}" style="display: inline-block; background-color: #10B981; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; margin-right: 15px;">✓ APPROVE &amp; PUBLISH</a>
+            <a href="{rejection_link}" style="display: inline-block; background-color: #ef4444; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">✗ REJECT POST</a>
+          </div>
+        </div>
+      </body>
+    </html>
+    """
+    
+    msg.set_content("Please enable HTML viewing format to interact with the content.")
+    msg.add_alternative(html_content, subtype='html')
+    
+    # Securely embed the generated image inside the email payload directly
+    try:
+        img_full_path = req.image_path.lstrip('/')
+        if os.path.exists(img_full_path):
+            with open(img_full_path, 'rb') as f:
+                img_data = f.read()
+            msg.get_payload()[1].add_related(img_data, 'image', 'png', cid=image_cid)
+    except Exception as img_err:
+        print(f"Warning: Could not embed image natively: -> {img_err}")
+    
+    email_status = ""
+    try:
+        if sender_pass == "put_your_gmail_app_password_here":
+             print(f"\n[EMAIL MOCK - CREDENTIALS MISSING] Configured Email:\n{msg.get_content()}\n")
+             email_status = "Simulated: Please update sender_email and sender_pass in server.py"
+        else:
+             server = smtplib.SMTP('smtp.gmail.com', 587)
+             server.starttls()
+             server.login(sender_email, sender_pass)
+             server.send_message(msg)
+             server.quit()
+             email_status = "Successfully sent via Gmail SMTP"
+             print(f"-> Real HTML approval email sent to {req.ceo_email}")
+    except Exception as e:
+        print(f"Error sending real email: {e}")
+        email_status = f"SMTP Error failed to send: {e}"
+        
+    return {"status": "success", "message": f"Approval requested! {email_status}", "email_status": email_status}
+
+@app.get("/approve/{post_id}", response_class=HTMLResponse)
+async def approve_post(post_id: int):
+    update_post_status(post_id, "Approved")
+    return f'''
+    <html>
+      <body style='font-family: sans-serif; text-align: center; padding: 50px; background-color: #f9fafb;'>
+        <h1 style='color: #10B981;'>Post Approved!</h1>
+        <p style='color: #4b5563;'>Post ID {post_id} has been securely marked as approved. Our AI engine will publish it directly to the platform.</p>
+        <script>setTimeout(()=>window.close(), 3000);</script>
+      </body>
+    </html>
+    '''
+
+@app.get("/reject/{post_id}", response_class=HTMLResponse)
+async def reject_post(post_id: int):
+    update_post_status(post_id, "Rejected")
+    return f'''
+    <html>
+      <body style='font-family: sans-serif; text-align: center; padding: 50px; background-color: #f9fafb;'>
+        <h1 style='color: #ef4444;'>Post Rejected.</h1>
+        <p style='color: #4b5563;'>Post ID {post_id} has been cancelled securely. It will not be published.</p>
+        <script>setTimeout(()=>window.close(), 3000);</script>
+      </body>
+    </html>
+    '''
 
 class IntelRequest(BaseModel):
     topic: str
