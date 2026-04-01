@@ -1,0 +1,1016 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Image Processing Assistant</title>
+  <style>
+    /* ── Reset / Base ─────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0f1117;
+      --surface:   #1a1d27;
+      --surface2:  #22263a;
+      --border:    #2e3350;
+      --accent:    #6c63ff;
+      --accent2:   #a78bfa;
+      --text:      #e2e8f0;
+      --text-muted:#8892a4;
+      --success:   #34d399;
+      --error:     #f87171;
+      --radius:    12px;
+      --radius-sm: 6px;
+      --shadow:    0 4px 24px rgba(0,0,0,.45);
+    }
+
+    html { font-size: 15px; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Inter", system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ───────────────────────────────────────────────────────────── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    header svg { flex-shrink: 0; }
+    header h1  { font-size: 1.25rem; font-weight: 700; letter-spacing: -.3px; }
+    header p   { font-size: .8rem; color: var(--text-muted); margin-top: 2px; }
+
+    /* ── Layout ───────────────────────────────────────────────────────────── */
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 380px 1fr;
+      gap: 0;
+      max-width: 1400px;
+      margin: 0 auto;
+      width: 100%;
+      padding: 2rem;
+      gap: 1.5rem;
+      align-items: start;
+    }
+
+    @media (max-width: 900px) {
+      main { grid-template-columns: 1fr; }
+    }
+
+    /* ── Panel (sidebar) ──────────────────────────────────────────────────── */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    .section-label {
+      font-size: .68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      color: var(--accent2);
+      margin-bottom: .5rem;
+    }
+
+    /* ── Drop zone ────────────────────────────────────────────────────────── */
+    #drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 2rem 1rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+      position: relative;
+    }
+    #drop-zone:hover, #drop-zone.drag-over {
+      border-color: var(--accent);
+      background: rgba(108,99,255,.06);
+    }
+    #drop-zone input[type=file] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    #drop-zone .dz-icon { font-size: 2.5rem; line-height: 1; }
+    #drop-zone p.dz-hint { font-size: .8rem; color: var(--text-muted); margin-top: .5rem; }
+    #drop-zone p.dz-name { font-size: .85rem; font-weight: 600; margin-top: .5rem; color: var(--success); word-break: break-all; }
+
+    /* ── Form controls ────────────────────────────────────────────────────── */
+    .field { display: flex; flex-direction: column; gap: .35rem; }
+    .field label { font-size: .8rem; font-weight: 500; color: var(--text-muted); }
+
+    .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+
+    input[type=number],
+    input[type=text],
+    select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-size: .875rem;
+      padding: .5rem .75rem;
+      width: 100%;
+      outline: none;
+      transition: border-color .15s;
+      appearance: none;
+      -webkit-appearance: none;
+    }
+    input[type=number]:focus,
+    input[type=text]:focus,
+    select:focus { border-color: var(--accent); }
+
+    /* range */
+    .range-wrap { display: flex; align-items: center; gap: .75rem; }
+    input[type=range] {
+      flex: 1;
+      accent-color: var(--accent);
+      height: 4px;
+      cursor: pointer;
+    }
+    .range-val {
+      font-size: .8rem;
+      font-weight: 600;
+      color: var(--accent2);
+      min-width: 2.5rem;
+      text-align: right;
+    }
+
+    /* segmented toggle */
+    .seg-group {
+      display: flex;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+    }
+    .seg-group input[type=radio] { display: none; }
+    .seg-group label {
+      flex: 1;
+      text-align: center;
+      padding: .45rem .25rem;
+      font-size: .78rem;
+      font-weight: 500;
+      cursor: pointer;
+      color: var(--text-muted);
+      transition: background .15s, color .15s;
+      user-select: none;
+    }
+    .seg-group input[type=radio]:checked + label {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    /* color swatch */
+    .color-row { display: flex; gap: .5rem; align-items: center; }
+    .color-row input[type=text] { flex: 1; }
+    .swatch {
+      width: 32px; height: 32px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    /* divider */
+    hr { border: none; border-top: 1px solid var(--border); }
+
+    /* ── Preset picker ────────────────────────────────────────────────────── */
+    .platform-tabs {
+      display: flex;
+      gap: .375rem;
+      flex-wrap: wrap;
+    }
+    .platform-tab {
+      padding: .3rem .65rem;
+      border-radius: 99px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-muted);
+      font-size: .75rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s, color .15s, border-color .15s;
+      white-space: nowrap;
+    }
+    .platform-tab:hover   { border-color: var(--accent); color: var(--text); }
+    .platform-tab.active  { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    .preset-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: .5rem;
+      margin-top: .5rem;
+    }
+    .preset-card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: .6rem .75rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+      transition: border-color .15s, background .15s;
+      background: var(--surface2);
+    }
+    .preset-card:hover  { border-color: var(--accent); }
+    .preset-card.active { border-color: var(--accent); background: rgba(108,99,255,.12); }
+    .preset-card.hidden { display: none; }
+
+    .preset-thumb {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+    }
+    .preset-thumb svg rect {
+      fill: var(--accent);
+      opacity: .7;
+      rx: 2;
+    }
+    .preset-card.active .preset-thumb svg rect { opacity: 1; }
+
+    .preset-info { min-width: 0; }
+    .preset-name {
+      font-size: .78rem;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .preset-dims {
+      font-size: .68rem;
+      color: var(--text-muted);
+      margin-top: 1px;
+    }
+
+    .preset-card-custom {
+      grid-column: span 2;
+      border: 1px dashed var(--border);
+      border-radius: var(--radius-sm);
+      padding: .6rem .75rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+      color: var(--text-muted);
+      font-size: .8rem;
+      font-weight: 500;
+      transition: border-color .15s, color .15s;
+      background: transparent;
+    }
+    .preset-card-custom:hover  { border-color: var(--accent); color: var(--text); }
+    .preset-card-custom.active { border-color: var(--accent); color: var(--text); }
+
+    .custom-dims {
+      display: none;
+      grid-column: span 2;
+    }
+    .custom-dims.visible { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+
+    /* ── Submit button ────────────────────────────────────────────────────── */
+    #btn-process {
+      width: 100%;
+      padding: .75rem;
+      background: var(--accent);
+      color: #fff;
+      font-size: .95rem;
+      font-weight: 700;
+      border: none;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: opacity .15s, transform .1s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: .5rem;
+    }
+    #btn-process:hover  { opacity: .9; }
+    #btn-process:active { transform: scale(.98); }
+    #btn-process:disabled { opacity: .5; cursor: not-allowed; }
+
+    /* spinner */
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+      display: none;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Output panel ─────────────────────────────────────────────────────── */
+    .output-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      min-height: 480px;
+    }
+
+    .output-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: .875rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      gap: 1rem;
+    }
+    .output-toolbar h2 { font-size: .9rem; font-weight: 700; }
+
+    #btn-download {
+      display: none;
+      padding: .45rem 1rem;
+      background: var(--success);
+      color: #000;
+      font-size: .8rem;
+      font-weight: 700;
+      border: none;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: opacity .15s;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    #btn-download:hover { opacity: .85; }
+
+    .output-canvas {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      background:
+        repeating-conic-gradient(#1e2130 0% 25%, #181b28 0% 50%)
+        0 0 / 20px 20px;
+      min-height: 420px;
+    }
+
+    #result-img {
+      max-width: 100%;
+      max-height: 600px;
+      border-radius: var(--radius-sm);
+      box-shadow: var(--shadow);
+      display: none;
+    }
+
+    .placeholder {
+      text-align: center;
+      color: var(--text-muted);
+    }
+    .placeholder .ph-icon { font-size: 3rem; }
+    .placeholder p { font-size: .85rem; margin-top: .5rem; }
+
+    /* ── Metadata table ───────────────────────────────────────────────────── */
+    #meta-wrap {
+      border-top: 1px solid var(--border);
+      padding: 1rem 1.25rem;
+      display: none;
+    }
+    #meta-wrap h3 { font-size: .75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .1em; margin-bottom: .75rem; }
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: .5rem;
+    }
+    .meta-item {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: .5rem .75rem;
+    }
+    .meta-item .mk { font-size: .68rem; color: var(--text-muted); text-transform: capitalize; display: flex; align-items: center; gap: .35rem; }
+    .meta-item .mv { font-size: .82rem; font-weight: 600; margin-top: 2px; word-break: break-all; }
+    .auto-badge {
+      display: inline-block;
+      font-size: .58rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      padding: 1px 5px;
+      border-radius: 3px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff;
+      line-height: 1.4;
+    }
+
+    /* ── Error toast ──────────────────────────────────────────────────────── */
+    #toast {
+      position: fixed;
+      bottom: 1.5rem; right: 1.5rem;
+      background: var(--error);
+      color: #fff;
+      padding: .75rem 1.25rem;
+      border-radius: var(--radius-sm);
+      font-size: .85rem;
+      font-weight: 600;
+      box-shadow: var(--shadow);
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity .25s, transform .25s;
+      pointer-events: none;
+      max-width: 340px;
+      z-index: 999;
+    }
+    #toast.show { opacity: 1; transform: translateY(0); }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<header>
+  <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+    <rect width="32" height="32" rx="8" fill="#6c63ff"/>
+    <path d="M7 22 L13 12 L18 18 L22 14 L27 22 Z" fill="rgba(255,255,255,.25)" stroke="white" stroke-width="1.5" stroke-linejoin="round"/>
+    <circle cx="21" cy="11" r="3" fill="white" opacity=".9"/>
+  </svg>
+  <div>
+    <h1>Image Processing Assistant</h1>
+    <p>Resize &amp; brand images with production-quality logo overlays</p>
+  </div>
+</header>
+
+<!-- Main -->
+<main>
+
+  <!-- ── Left panel: controls ── -->
+  <form class="panel" id="main-form" autocomplete="off">
+
+    <!-- Upload -->
+    <div>
+      <div class="section-label">Input Image</div>
+      <div id="drop-zone">
+        <input type="file" id="file-input" name="file" accept="image/*" required />
+        <div class="dz-icon">🖼️</div>
+        <p class="dz-hint">Click or drag &amp; drop an image</p>
+        <p class="dz-name" id="dz-name" style="display:none"></p>
+      </div>
+    </div>
+
+    <hr />
+
+    <!-- Dimensions -->
+    <div>
+      <div class="section-label">Output Dimensions</div>
+
+      <!-- Platform filter tabs -->
+      <div class="platform-tabs" id="platform-tabs">
+        <button type="button" class="platform-tab active" data-platform="all">All</button>
+        <button type="button" class="platform-tab" data-platform="instagram">Instagram</button>
+        <button type="button" class="platform-tab" data-platform="facebook">Facebook</button>
+        <button type="button" class="platform-tab" data-platform="twitter">X / Twitter</button>
+        <button type="button" class="platform-tab" data-platform="linkedin">LinkedIn</button>
+        <button type="button" class="platform-tab" data-platform="youtube">YouTube</button>
+        <button type="button" class="platform-tab" data-platform="tiktok">TikTok</button>
+        <button type="button" class="platform-tab" data-platform="pinterest">Pinterest</button>
+        <button type="button" class="platform-tab" data-platform="whatsapp">WhatsApp</button>
+      </div>
+
+      <!-- Preset cards -->
+      <div class="preset-grid" id="preset-grid">
+        <!-- Instagram -->
+        <div class="preset-card active" data-platform="instagram" data-w="1080" data-h="1080">
+          <div class="preset-thumb" id="thumb-ig-sq"></div>
+          <div class="preset-info">
+            <div class="preset-name">IG Post</div>
+            <div class="preset-dims">1080 × 1080 · 1:1</div>
+          </div>
+        </div>
+        <div class="preset-card" data-platform="instagram" data-w="1080" data-h="1350">
+          <div class="preset-thumb" id="thumb-ig-pt"></div>
+          <div class="preset-info">
+            <div class="preset-name">IG Portrait</div>
+            <div class="preset-dims">1080 × 1350 · 4:5</div>
+          </div>
+        </div>
+        <div class="preset-card" data-platform="instagram" data-w="1080" data-h="566">
+          <div class="preset-thumb" id="thumb-ig-ls"></div>
+          <div class="preset-info">
+            <div class="preset-name">IG Landscape</div>
+            <div class="preset-dims">1080 × 566 · 1.91:1</div>
+          </div>
+        </div>
+        <div class="preset-card" data-platform="instagram" data-w="1080" data-h="1920">
+          <div class="preset-thumb" id="thumb-ig-st"></div>
+          <div class="preset-info">
+            <div class="preset-name">IG Story / Reel</div>
+            <div class="preset-dims">1080 × 1920 · 9:16</div>
+          </div>
+        </div>
+
+        <!-- Facebook -->
+        <div class="preset-card" data-platform="facebook" data-w="1200" data-h="630">
+          <div class="preset-thumb" id="thumb-fb-post"></div>
+          <div class="preset-info">
+            <div class="preset-name">FB Post</div>
+            <div class="preset-dims">1200 × 630 · 1.91:1</div>
+          </div>
+        </div>
+        <div class="preset-card" data-platform="facebook" data-w="1080" data-h="1080">
+          <div class="preset-thumb" id="thumb-fb-sq"></div>
+          <div class="preset-info">
+            <div class="preset-name">FB Square</div>
+            <div class="preset-dims">1080 × 1080 · 1:1</div>
+          </div>
+        </div>
+        <div class="preset-card" data-platform="facebook" data-w="1080" data-h="1920">
+          <div class="preset-thumb" id="thumb-fb-story"></div>
+          <div class="preset-info">
+            <div class="preset-name">FB Story</div>
+            <div class="preset-dims">1080 × 1920 · 9:16</div>
+          </div>
+        </div>
+        <div class="preset-card" data-platform="facebook" data-w="820" data-h="312">
+          <div class="preset-thumb" id="thumb-fb-cover"></div>
+          <div class="preset-info">
+            <div class="preset-name">FB Cover</div>
+            <div class="preset-dims">820 × 312 · 2.63:1</div>
+          </div>
+        </div>
+
+        <!-- Twitter / X -->
+        <div class="preset-card" data-platform="twitter" data-w="1600" data-h="900">
+          <div class="preset-thumb" id="thumb-tw-post"></div>
+          <div class="preset-info">
+            <div class="preset-name">X Post</div>
+            <div class="preset-dims">1600 × 900 · 16:9</div>
+          </div>
+        </div>
+        <div class="preset-card" data-platform="twitter" data-w="1500" data-h="500">
+          <div class="preset-thumb" id="thumb-tw-header"></div>
+          <div class="preset-info">
+            <div class="preset-name">X Header</div>
+            <div class="preset-dims">1500 × 500 · 3:1</div>
+          </div>
+        </div>
+
+        <!-- LinkedIn -->
+        <div class="preset-card" data-platform="linkedin" data-w="1200" data-h="627">
+          <div class="preset-thumb" id="thumb-li-post"></div>
+          <div class="preset-info">
+            <div class="preset-name">LI Post</div>
+            <div class="preset-dims">1200 × 627 · 1.91:1</div>
+          </div>
+        </div>
+        <div class="preset-card" data-platform="linkedin" data-w="1080" data-h="1080">
+          <div class="preset-thumb" id="thumb-li-sq"></div>
+          <div class="preset-info">
+            <div class="preset-name">LI Square</div>
+            <div class="preset-dims">1080 × 1080 · 1:1</div>
+          </div>
+        </div>
+        <div class="preset-card" data-platform="linkedin" data-w="1584" data-h="396">
+          <div class="preset-thumb" id="thumb-li-cover"></div>
+          <div class="preset-info">
+            <div class="preset-name">LI Cover</div>
+            <div class="preset-dims">1584 × 396 · 4:1</div>
+          </div>
+        </div>
+        <div class="preset-card" data-platform="linkedin" data-w="1080" data-h="1920">
+          <div class="preset-thumb" id="thumb-li-story"></div>
+          <div class="preset-info">
+            <div class="preset-name">LI Story</div>
+            <div class="preset-dims">1080 × 1920 · 9:16</div>
+          </div>
+        </div>
+
+        <!-- YouTube -->
+        <div class="preset-card" data-platform="youtube" data-w="1280" data-h="720">
+          <div class="preset-thumb" id="thumb-yt-thumb"></div>
+          <div class="preset-info">
+            <div class="preset-name">YT Thumbnail</div>
+            <div class="preset-dims">1280 × 720 · 16:9</div>
+          </div>
+        </div>
+        <div class="preset-card" data-platform="youtube" data-w="2560" data-h="1440">
+          <div class="preset-thumb" id="thumb-yt-art"></div>
+          <div class="preset-info">
+            <div class="preset-name">YT Channel Art</div>
+            <div class="preset-dims">2560 × 1440 · 16:9</div>
+          </div>
+        </div>
+
+        <!-- TikTok -->
+        <div class="preset-card" data-platform="tiktok" data-w="1080" data-h="1920">
+          <div class="preset-thumb" id="thumb-tt-vid"></div>
+          <div class="preset-info">
+            <div class="preset-name">TikTok Video</div>
+            <div class="preset-dims">1080 × 1920 · 9:16</div>
+          </div>
+        </div>
+        <div class="preset-card" data-platform="tiktok" data-w="1080" data-h="1080">
+          <div class="preset-thumb" id="thumb-tt-sq"></div>
+          <div class="preset-info">
+            <div class="preset-name">TikTok Square</div>
+            <div class="preset-dims">1080 × 1080 · 1:1</div>
+          </div>
+        </div>
+
+        <!-- Pinterest -->
+        <div class="preset-card" data-platform="pinterest" data-w="1000" data-h="1500">
+          <div class="preset-thumb" id="thumb-pin-std"></div>
+          <div class="preset-info">
+            <div class="preset-name">Pin Standard</div>
+            <div class="preset-dims">1000 × 1500 · 2:3</div>
+          </div>
+        </div>
+        <div class="preset-card" data-platform="pinterest" data-w="1000" data-h="2100">
+          <div class="preset-thumb" id="thumb-pin-long"></div>
+          <div class="preset-info">
+            <div class="preset-name">Pin Long</div>
+            <div class="preset-dims">1000 × 2100 · 1:2.1</div>
+          </div>
+        </div>
+
+        <!-- WhatsApp -->
+        <div class="preset-card" data-platform="whatsapp" data-w="1080" data-h="1920">
+          <div class="preset-thumb" id="thumb-wa-status"></div>
+          <div class="preset-info">
+            <div class="preset-name">WA Status</div>
+            <div class="preset-dims">1080 × 1920 · 9:16</div>
+          </div>
+        </div>
+        <div class="preset-card" data-platform="whatsapp" data-w="1080" data-h="1080">
+          <div class="preset-thumb" id="thumb-wa-sq"></div>
+          <div class="preset-info">
+            <div class="preset-name">WA Square</div>
+            <div class="preset-dims">1080 × 1080 · 1:1</div>
+          </div>
+        </div>
+
+        <!-- Custom -->
+        <div class="preset-card-custom" id="card-custom">
+          <span style="font-size:1.1rem">✏️</span> Custom size
+        </div>
+        <div class="custom-dims" id="custom-dims">
+          <div class="field">
+            <label for="width">Width (px)</label>
+            <input type="number" id="width" name="width" value="1080" min="1" max="8000" />
+          </div>
+          <div class="field">
+            <label for="height">Height (px)</label>
+            <input type="number" id="height" name="height" value="1080" min="1" max="8000" />
+          </div>
+        </div>
+      </div>
+
+      <div class="field" style="margin-top:.75rem">
+        <label>Resize Mode</label>
+        <div class="seg-group">
+          <input type="radio" name="resize_mode" id="rm-cover"    value="cover"   checked />
+          <label for="rm-cover">Cover</label>
+          <input type="radio" name="resize_mode" id="rm-contain"  value="contain" />
+          <label for="rm-contain">Contain</label>
+          <input type="radio" name="resize_mode" id="rm-stretch"  value="stretch" />
+          <label for="rm-stretch">Stretch</label>
+        </div>
+      </div>
+
+      <!-- Background color (shown when contain) -->
+      <div class="field" id="bg-field" style="margin-top:.75rem; display:none">
+        <label for="bg-color">Background Color</label>
+        <div class="color-row">
+          <input type="text" id="bg-color" name="background_color" value="white" placeholder="#ffffff or name" />
+          <input type="color" class="swatch" id="bg-swatch" value="#ffffff" title="Pick color" />
+        </div>
+      </div>
+    </div>
+
+    <hr />
+
+    <!-- Logo -->
+    <div>
+      <div class="section-label">Logo</div>
+
+      <div class="row-2">
+        <div class="field">
+          <label>Variant</label>
+          <div class="seg-group">
+            <input type="radio" name="logo_variant" id="lv-auto"  value="auto"  checked />
+            <label for="lv-auto">Auto</label>
+            <input type="radio" name="logo_variant" id="lv-light" value="light" />
+            <label for="lv-light">Light</label>
+            <input type="radio" name="logo_variant" id="lv-dark"  value="dark" />
+            <label for="lv-dark">Dark</label>
+          </div>
+        </div>
+        <div class="field">
+          <label for="logo_position">Position</label>
+          <select id="logo_position" name="logo_position">
+            <option value="auto" selected>✦ Auto (smart)</option>
+            <option value="bottom-right">Bottom Right</option>
+            <option value="bottom-left">Bottom Left</option>
+            <option value="top-right">Top Right</option>
+            <option value="top-left">Top Left</option>
+            <option value="center">Center</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field" style="margin-top:.75rem">
+        <label>Scale — % of image width &nbsp;<span class="range-val" id="scale-val">15%</span></label>
+        <input type="range" id="logo_scale" name="logo_scale" min="3" max="50" step="1" value="15" />
+      </div>
+
+      <div class="field" style="margin-top:.75rem">
+        <label>Opacity &nbsp;<span class="range-val" id="opacity-val">0.85</span></label>
+        <input type="range" id="logo_opacity" name="logo_opacity" min="0" max="1" step="0.05" value="0.85" />
+      </div>
+
+      <div class="row-2" style="margin-top:.75rem">
+        <div class="field">
+          <label for="logo_margin">Margin (px)</label>
+          <input type="number" id="logo_margin" name="logo_margin" value="20" min="0" max="500" />
+        </div>
+        <div class="field">
+          <label for="logo_blend">Blend Mode</label>
+          <select id="logo_blend" name="logo_blend">
+            <option value="normal" selected>Normal</option>
+            <option value="multiply">Multiply</option>
+            <option value="overlay">Overlay</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <hr />
+
+    <!-- Output -->
+    <div>
+      <div class="section-label">Output Format</div>
+      <div class="row-2">
+        <div class="field">
+          <label>Format</label>
+          <div class="seg-group">
+            <input type="radio" name="output_format" id="of-png"  value="png"  checked />
+            <label for="of-png">PNG</label>
+            <input type="radio" name="output_format" id="of-jpg"  value="jpeg" />
+            <label for="of-jpg">JPEG</label>
+            <input type="radio" name="output_format" id="of-webp" value="webp" />
+            <label for="of-webp">WebP</label>
+          </div>
+        </div>
+        <div class="field" id="quality-field">
+          <label>Quality &nbsp;<span class="range-val" id="quality-val">95</span></label>
+          <input type="range" id="quality" name="quality" min="60" max="100" step="1" value="95" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Submit -->
+    <button type="submit" id="btn-process">
+      <span class="spinner" id="spinner"></span>
+      <span id="btn-label">⚡ Process Image</span>
+    </button>
+
+  </form>
+
+  <!-- ── Right panel: output ── -->
+  <div class="output-panel">
+    <div class="output-toolbar">
+      <h2>Result</h2>
+      <a id="btn-download" href="#" download="processed.png">↓ Download</a>
+    </div>
+
+    <div class="output-canvas">
+      <div class="placeholder" id="placeholder">
+        <div class="ph-icon">✨</div>
+        <p>Your processed image will appear here</p>
+      </div>
+      <img id="result-img" alt="Processed image" />
+    </div>
+
+    <div id="meta-wrap">
+      <h3>Processing Details</h3>
+      <div class="meta-grid" id="meta-grid"></div>
+    </div>
+  </div>
+
+</main>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+  // ── Helpers ──────────────────────────────────────────────────────────────
+  const $  = id => document.getElementById(id);
+  const qs = sel => document.querySelector(sel);
+
+  function showToast(msg) {
+    const t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => t.classList.remove('show'), 4000);
+  }
+
+  // ── Preset data & aspect-ratio thumbnails ────────────────────────────────
+  function makeSVGThumb(w, h) {
+    const BOX = 28;
+    const ratio = w / h;
+    let rw, rh;
+    if (ratio >= 1) { rw = BOX; rh = Math.round(BOX / ratio); }
+    else            { rh = BOX; rw = Math.round(BOX * ratio); }
+    rw = Math.max(rw, 4); rh = Math.max(rh, 4);
+    const x = Math.round((BOX - rw) / 2);
+    const y = Math.round((BOX - rh) / 2);
+    return `<svg width="${BOX}" height="${BOX}" viewBox="0 0 ${BOX} ${BOX}" fill="none">
+      <rect x="${x}" y="${y}" width="${rw}" height="${rh}" rx="2" fill="var(--accent)" opacity=".75"/>
+    </svg>`;
+  }
+
+  // Render thumbnails for every preset card
+  document.querySelectorAll('.preset-card[data-w]').forEach(card => {
+    const w = +card.dataset.w, h = +card.dataset.h;
+    card.querySelector('.preset-thumb').innerHTML = makeSVGThumb(w, h);
+  });
+
+  // ── Platform filter tabs ──────────────────────────────────────────────────
+  document.querySelectorAll('.platform-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.platform-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      const plat = tab.dataset.platform;
+      document.querySelectorAll('.preset-card[data-platform]').forEach(card => {
+        card.classList.toggle('hidden', plat !== 'all' && card.dataset.platform !== plat);
+      });
+    });
+  });
+
+  // ── Preset card selection ─────────────────────────────────────────────────
+  function selectPreset(card) {
+    document.querySelectorAll('.preset-card.active').forEach(c => c.classList.remove('active'));
+    document.getElementById('card-custom').classList.remove('active');
+    document.getElementById('custom-dims').classList.remove('visible');
+    card.classList.add('active');
+    $('width').value  = card.dataset.w;
+    $('height').value = card.dataset.h;
+  }
+
+  document.querySelectorAll('.preset-card[data-w]').forEach(card => {
+    card.addEventListener('click', () => selectPreset(card));
+  });
+
+  // Custom card
+  $('card-custom').addEventListener('click', () => {
+    document.querySelectorAll('.preset-card.active').forEach(c => c.classList.remove('active'));
+    $('card-custom').classList.add('active');
+    $('custom-dims').classList.add('visible');
+    $('width').focus();
+  });
+
+  // ── Range live values ─────────────────────────────────────────────────────
+  $('logo_scale').addEventListener('input', e => {
+    $('scale-val').textContent = e.target.value + '%';
+  });
+  $('logo_opacity').addEventListener('input', e => {
+    $('opacity-val').textContent = parseFloat(e.target.value).toFixed(2);
+  });
+  $('quality').addEventListener('input', e => {
+    $('quality-val').textContent = e.target.value;
+  });
+
+  // ── Show/hide bg color when resize mode = contain ─────────────────────────
+  document.querySelectorAll('input[name=resize_mode]').forEach(r => {
+    r.addEventListener('change', () => {
+      $('bg-field').style.display = r.value === 'contain' ? '' : 'none';
+    });
+  });
+
+  // ── Show/hide quality for PNG (lossless) ─────────────────────────────────
+  document.querySelectorAll('input[name=output_format]').forEach(r => {
+    r.addEventListener('change', () => {
+      $('quality-field').style.opacity = r.value === 'png' ? '.4' : '1';
+      $('quality').disabled = r.value === 'png';
+    });
+  });
+
+  // ── Color swatch ↔ text sync ──────────────────────────────────────────────
+  $('bg-swatch').addEventListener('input', e => {
+    $('bg-color').value = e.target.value;
+  });
+  $('bg-color').addEventListener('input', e => {
+    const v = e.target.value.trim();
+    if (/^#[0-9a-fA-F]{6}$/.test(v)) $('bg-swatch').value = v;
+  });
+
+  // ── Drop zone ─────────────────────────────────────────────────────────────
+  const dz = $('drop-zone');
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+  dz.addEventListener('drop', e => {
+    e.preventDefault();
+    dz.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f) setFile(f);
+  });
+
+  $('file-input').addEventListener('change', e => {
+    if (e.target.files[0]) setFile(e.target.files[0]);
+  });
+
+  function setFile(f) {
+    const name = $('dz-name');
+    name.textContent = f.name;
+    name.style.display = '';
+    qs('#drop-zone .dz-hint').textContent = 'Click to change image';
+  }
+
+  // ── Form submit ───────────────────────────────────────────────────────────
+  $('main-form').addEventListener('submit', async e => {
+    e.preventDefault();
+
+    const fileInput = $('file-input');
+    if (!fileInput.files[0]) { showToast('Please select an image first.'); return; }
+
+    // Show spinner
+    const btn = $('btn-process');
+    btn.disabled = true;
+    $('spinner').style.display = 'block';
+    $('btn-label').textContent = 'Processing…';
+
+    try {
+      const fd = new FormData(e.target);
+
+      const res = await fetch('/process', { method: 'POST', body: fd });
+      const data = await res.json();
+
+      if (!res.ok) {
+        showToast(data.detail || 'Processing failed.');
+        return;
+      }
+
+      // Show image
+      const img = $('result-img');
+      img.src = data.image;
+      img.style.display = 'block';
+      $('placeholder').style.display = 'none';
+
+      // Download button
+      const dl = $('btn-download');
+      dl.href = `/download/${data.filename}`;
+      dl.download = `processed.${data.filename.split('.').pop()}`;
+      dl.style.display = 'inline-block';
+
+      // Metadata
+      renderMeta(data.meta);
+
+    } catch (err) {
+      showToast('Network error: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      $('spinner').style.display = 'none';
+      $('btn-label').textContent = '⚡ Process Image';
+    }
+  });
+
+  function renderMeta(meta) {
+    const wrap = $('meta-wrap');
+    const grid = $('meta-grid');
+    grid.innerHTML = '';
+
+    const labels = {
+      original_size:  'Original Size',
+      final_size:     'Final Size',
+      resize_mode:    'Resize Mode',
+      logo_variant:   'Logo',
+      logo_position:  'Position',
+      logo_scale:     'Logo Scale',
+      logo_margin:    'Margin',
+      logo_opacity:   'Opacity',
+      logo_blend:     'Blend Mode',
+      output_format:  'Format',
+      quality:        'Quality',
+    };
+
+    for (const [k, label] of Object.entries(labels)) {
+      if (meta[k] === undefined) continue;
+      const item = document.createElement('div');
+      item.className = 'meta-item';
+      const isAuto = meta[k].toString().includes('(auto)');
+      const badge  = isAuto ? ' <span class="auto-badge">auto</span>' : '';
+      const val    = meta[k].toString().replace(' (auto)', '');
+      item.innerHTML = `<div class="mk">${label}${badge}</div><div class="mv">${val}</div>`;
+      grid.appendChild(item);
+    }
+
+    wrap.style.display = 'block';
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+Pillow
+numpy
+python-multipart
+google-genai
+requests
+beautifulsoup4

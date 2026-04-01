@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "image-gpt",
+      "runtimeExecutable": "/Volumes/ssd/dev/pyenv/versions/3.11.7/bin/python3",
+      "runtimeArgs": ["-m", "uvicorn", "server:app", "--port", "8000", "--app-dir", "/Volumes/SSD/image-gpt"],
+      "port": 8000
+    }
+  ]
+}
